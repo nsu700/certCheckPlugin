@@ -67,14 +67,19 @@ func main() {
 				panic("no tls.crt in the secret")
 			}
 			certs := getCert(certChain)
-			for i := range certs {
-				block, _ := pem.Decode([]byte(certs[i]))
-				if block == nil {
-					panic("failed to decode PEM block containing public key")
+			go func() {
+				for {
+					cert := <-certs
+					for i := range cert {
+						block, _ := pem.Decode([]byte(cert[i]))
+						if block == nil {
+							panic("failed to decode PEM block containing public key")
+						}
+						cert := parseCertificate(block.Bytes, content.Name, content.Namespace)
+						go finalOutput(cert, *days, *nonExpiring)
+					}
 				}
-				cert := parseCertificate(block.Bytes, content.Name, content.Namespace)
-				go finalOutput(cert, *days, *nonExpiring)
-			}
+			}()
 		}
 	}
 }
@@ -99,16 +104,20 @@ func parseCertificate(block []byte, name, namespace string) certificate {
 		expireDate: certContent.NotAfter, signDate: certContent.NotBefore, secretName: name, namespace: namespace}
 }
 
-func getCert(certChain string) []string {
-	var certList []string
-	certBeginMark, _ := regexp.Compile("-----BEGIN CERTIFICATE-----")
-	certEndMark, _ := regexp.Compile("-----END CERTIFICATE-----")
-	certStartList := certBeginMark.FindAllStringIndex(certChain, 10)
-	certEndList := certEndMark.FindAllStringIndex(certChain, 10)
-	for i := range certStartList {
-		certStart := certStartList[i][0]
-		certEnd := certEndList[i][1]
-		certList = append(certList, certChain[certStart:certEnd])
-	}
-	return certList
+func getCert(certChain string) <-chan []string {
+	certs := make(chan []string)
+	go func() {
+		var certList []string
+		certBeginMark, _ := regexp.Compile("-----BEGIN CERTIFICATE-----")
+		certEndMark, _ := regexp.Compile("-----END CERTIFICATE-----")
+		certStartList := certBeginMark.FindAllStringIndex(certChain, 10)
+		certEndList := certEndMark.FindAllStringIndex(certChain, 10)
+		for i := range certStartList {
+			certStart := certStartList[i][0]
+			certEnd := certEndList[i][1]
+			certList = append(certList, certChain[certStart:certEnd])
+		}
+		certs <- certList
+	}()
+	return certs
 }

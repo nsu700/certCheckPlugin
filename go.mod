@@ -1,6 +1,6 @@
 module cert-checker
 
-go 1.17
+go 1.18
 
 require (
 	k8s.io/apimachinery v0.24.0
