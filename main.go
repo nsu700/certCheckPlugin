@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/pkg/profile"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -26,6 +28,7 @@ type certificate struct {
 }
 
 func main() {
+	defer profile.Start().Stop()
 	days := flag.Int("days", 30, "Number of days certificates will expiring")
 	nonExpiring := flag.Bool("nonexpiring", false, "Display non-expiring certs or not")
 
@@ -76,7 +79,7 @@ func main() {
 							panic("failed to decode PEM block containing public key")
 						}
 						cert := parseCertificate(block.Bytes, content.Name, content.Namespace)
-						go finalOutput(cert, *days, *nonExpiring)
+						finalOutput(cert, *days, *nonExpiring)
 					}
 				}
 			}()
@@ -91,7 +94,7 @@ func finalOutput(cert certificate, days int, nonExpiring bool) {
 		fmt.Printf("!!WARN: The cert %s of project %s is expring in %v days\n", cert.secretName, cert.namespace, days)
 		fmt.Println(cert.subject, cert.expireDate.String())
 	} else if nonExpiring {
-		fmt.Println(cert.secretName, cert.namespace, cert.expireDate.String())
+		fmt.Println(cert.secretName, cert.namespace, cert.issuer, cert.subject, cert.expireDate.String())
 	}
 }
 
