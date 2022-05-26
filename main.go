@@ -10,8 +10,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/pkg/profile"
-
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -28,7 +27,6 @@ type certificate struct {
 }
 
 func main() {
-	defer profile.Start().Stop()
 	days := flag.Int("days", 30, "Number of days certificates will expiring")
 	nonExpiring := flag.Bool("nonexpiring", false, "Display non-expiring certs or not")
 
@@ -58,31 +56,30 @@ func main() {
 		panic(err.Error())
 	}
 
+	parseSecret(*secrets, *clientset, *days, *nonExpiring)
+
+}
+
+func parseSecret(secrets v1.SecretList, clientset kubernetes.Clientset, days int, nonExpiring bool) {
 	for _, secret := range secrets.Items {
 		content, err := clientset.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
 		if err != nil {
 			panic(err.Error())
 		}
 		if content.Type == "kubernetes.io/tls" || content.Type == "SecretTypeTLS" {
-			// fmt.Println(content.Type, content.Name, content.Namespace)
 			certChain := string(content.Data["tls.crt"])
 			if certChain == "" {
 				panic("no tls.crt in the secret")
 			}
 			certs := getCert(certChain)
-			go func() {
-				for {
-					cert := <-certs
-					for i := range cert {
-						block, _ := pem.Decode([]byte(cert[i]))
-						if block == nil {
-							panic("failed to decode PEM block containing public key")
-						}
-						cert := parseCertificate(block.Bytes, content.Name, content.Namespace)
-						finalOutput(cert, *days, *nonExpiring)
-					}
+			for i := range certs {
+				block, _ := pem.Decode([]byte(certs[i]))
+				if block == nil {
+					panic("failed to decode PEM block containing public key")
 				}
-			}()
+				cert := parseCertificate(block.Bytes, content.Name, content.Namespace)
+				finalOutput(cert, days, nonExpiring)
+			}
 		}
 	}
 }
@@ -107,20 +104,16 @@ func parseCertificate(block []byte, name, namespace string) certificate {
 		expireDate: certContent.NotAfter, signDate: certContent.NotBefore, secretName: name, namespace: namespace}
 }
 
-func getCert(certChain string) <-chan []string {
-	certs := make(chan []string)
-	go func() {
-		var certList []string
-		certBeginMark, _ := regexp.Compile("-----BEGIN CERTIFICATE-----")
-		certEndMark, _ := regexp.Compile("-----END CERTIFICATE-----")
-		certStartList := certBeginMark.FindAllStringIndex(certChain, 10)
-		certEndList := certEndMark.FindAllStringIndex(certChain, 10)
-		for i := range certStartList {
-			certStart := certStartList[i][0]
-			certEnd := certEndList[i][1]
-			certList = append(certList, certChain[certStart:certEnd])
-		}
-		certs <- certList
-	}()
-	return certs
+func getCert(certChain string) []string {
+	var certList []string
+	certBeginMark, _ := regexp.Compile("-----BEGIN CERTIFICATE-----")
+	certEndMark, _ := regexp.Compile("-----END CERTIFICATE-----")
+	certStartList := certBeginMark.FindAllStringIndex(certChain, 10)
+	certEndList := certEndMark.FindAllStringIndex(certChain, 10)
+	for i := range certStartList {
+		certStart := certStartList[i][0]
+		certEnd := certEndList[i][1]
+		certList = append(certList, certChain[certStart:certEnd])
+	}
+	return certList
 }
