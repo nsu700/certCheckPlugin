@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/pkg/profile"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -27,6 +29,8 @@ type certificate struct {
 }
 
 func main() {
+	defer profile.Start().Stop()
+
 	days := flag.Int("days", 30, "Number of days certificates will expiring")
 	nonExpiring := flag.Bool("nonexpiring", false, "Display non-expiring certs or not")
 
