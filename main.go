@@ -66,6 +66,7 @@ func main() {
 
 func parseSecret(secrets v1.SecretList, clientset kubernetes.Clientset, days int, nonExpiring bool) {
 	for _, secret := range secrets.Items {
+		start := time.Now()
 		content, err := clientset.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
 		if err != nil {
 			panic(err.Error())
@@ -85,6 +86,7 @@ func parseSecret(secrets v1.SecretList, clientset kubernetes.Clientset, days int
 				finalOutput(cert, days, nonExpiring)
 			}
 		}
+		fmt.Println("parseSecret" + time.Since(start).String())
 	}
 }
 
@@ -100,10 +102,12 @@ func finalOutput(cert certificate, days int, nonExpiring bool) {
 }
 
 func parseCertificate(block []byte, name, namespace string) certificate {
+	start := time.Now()
 	certContent, err := x509.ParseCertificate(block)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("parseCertificate" + time.Since(start).String())
 	return certificate{subject: certContent.Subject.CommonName, issuer: certContent.Issuer.CommonName,
 		expireDate: certContent.NotAfter, signDate: certContent.NotBefore, secretName: name, namespace: namespace}
 }
