@@ -62,12 +62,8 @@ func main() {
 
 func parseSecret(secrets v1.SecretList, clientset kubernetes.Clientset, days int, nonExpiring bool) {
 	for _, secret := range secrets.Items {
-		content, err := clientset.CoreV1().Secrets(secret.Namespace).Get(context.TODO(), secret.Name, metav1.GetOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-		if content.Type == "kubernetes.io/tls" || content.Type == "SecretTypeTLS" {
-			certChain := string(content.Data["tls.crt"])
+		if secret.Type == "kubernetes.io/tls" || secret.Type == "SecretTypeTLS" {
+			certChain := string(secret.Data["tls.crt"])
 			if certChain == "" {
 				panic("no tls.crt in the secret")
 			}
@@ -77,7 +73,7 @@ func parseSecret(secrets v1.SecretList, clientset kubernetes.Clientset, days int
 				if block == nil {
 					panic("failed to decode PEM block containing public key")
 				}
-				cert := parseCertificate(block.Bytes, content.Name, content.Namespace)
+				cert := parseCertificate(block.Bytes, secret.Name, secret.Namespace)
 				finalOutput(cert, days, nonExpiring)
 			}
 		}
